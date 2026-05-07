@@ -1,0 +1,338 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  .sim-wrap { padding: 1.5rem 0; max-width: 680px; }
+  .sim-title { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.25rem; }
+  .sim-heading { font-size: 22px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 1.5rem; }
+  .canvas-wrap { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1rem; margin-bottom: 1.25rem; position: relative; height: 280px; overflow: hidden; }
+  canvas#forge { width: 100%; height: 100%; display: block; }
+  .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1.25rem; }
+  .ctrl { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 12px 14px; }
+  .ctrl-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .ctrl-label span { font-weight: 500; color: var(--color-text-primary); }
+  input[type=range] { width: 100%; }
+  .results-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .metric { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+  .metric-label { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .metric-val { font-size: 20px; font-weight: 500; color: var(--color-text-primary); }
+  .metric-unit { font-size: 11px; color: var(--color-text-secondary); }
+  .btn-row { display: flex; gap: 8px; margin-bottom: 1.5rem; }
+  button.sim-btn { padding: 8px 18px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: transparent; color: var(--color-text-primary); font-size: 14px; cursor: pointer; font-family: var(--font-sans); }
+  button.sim-btn:hover { background: var(--color-background-secondary); }
+  button.sim-btn.primary { background: var(--color-text-primary); color: var(--color-background-primary); border-color: var(--color-text-primary); }
+  button.sim-btn.primary:hover { opacity: 0.85; }
+  .chart-wrap { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem; }
+  .chart-title { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px; }
+  .formula-box { background: var(--color-background-secondary); border-radius: var(--border-radius-md); border-left: 3px solid #378ADD; padding: 10px 14px; margin-bottom: 1rem; font-size: 13px; color: var(--color-text-secondary); line-height: 1.6; }
+  .formula-box strong { color: var(--color-text-primary); font-weight: 500; }
+  .step-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.25rem; }
+  .step { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; padding: 8px 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-primary); }
+  .step-num { font-weight: 500; color: #378ADD; min-width: 20px; }
+  .step-text { color: var(--color-text-secondary); }
+  .step-text strong { color: var(--color-text-primary); font-weight: 500; }
+</style>
+
+<div class="sim-wrap">
+  <h2 class="sr-only">Drop forge impact simulator — adjust parameters to compute rebound height and coefficient of restitution</h2>
+  <p class="sim-title">MECE 3336 &nbsp;·&nbsp; Dynamics Project</p>
+  <h1 class="sim-heading">Drop forge impact simulator</h1>
+
+  <div class="canvas-wrap">
+    <canvas id="forge"></canvas>
+  </div>
+
+  <div class="btn-row">
+    <button class="sim-btn primary" id="btnDrop">Drop hammer</button>
+    <button class="sim-btn" id="btnReset">Reset</button>
+  </div>
+
+  <div class="controls-grid">
+    <div class="ctrl">
+      <div class="ctrl-label">Hammer mass m_B (kg) <span id="lbl-mB">600</span></div>
+      <input type="range" id="sl-mB" min="100" max="2000" step="10" value="600">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-label">Anvil mass m_A (kg) <span id="lbl-mA">3000</span></div>
+      <input type="range" id="sl-mA" min="500" max="8000" step="50" value="3000">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-label">Drop height h (mm) <span id="lbl-h">500</span></div>
+      <input type="range" id="sl-h" min="100" max="2000" step="10" value="500">
+    </div>
+    <div class="ctrl">
+      <div class="ctrl-label">Max deflection δ (mm) <span id="lbl-d">24</span></div>
+      <input type="range" id="sl-d" min="5" max="100" step="1" value="24">
+    </div>
+    <div class="ctrl" style="grid-column: 1 / -1;">
+      <div class="ctrl-label">Spring stiffness k (kN/m) <span id="lbl-k">2800</span></div>
+      <input type="range" id="sl-k" min="500" max="10000" step="100" value="2800">
+    </div>
+  </div>
+
+  <div class="results-grid">
+    <div class="metric">
+      <div class="metric-label">v_B before</div>
+      <div class="metric-val" id="res-vB">3.13</div>
+      <div class="metric-unit">m/s</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">v'_A after</div>
+      <div class="metric-val" id="res-vA">0.733</div>
+      <div class="metric-unit">m/s</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Rebound h</div>
+      <div class="metric-val" id="res-hr">14.5</div>
+      <div class="metric-unit">mm</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Coeff. e</div>
+      <div class="metric-val" id="res-e">0.405</div>
+      <div class="metric-unit">—</div>
+    </div>
+  </div>
+
+  <div class="step-list" id="stepList"></div>
+
+  <div class="chart-wrap">
+    <p class="chart-title">Rebound height vs drop height (current parameters)</p>
+    <div style="position: relative; width: 100%; height: 200px;">
+      <canvas id="paramChart" role="img" aria-label="Line chart showing rebound height vs drop height">Rebound height increases with drop height.</canvas>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const g = 9.81;
+
+function compute(mB, mA, hDrop, delta, k) {
+  const vB = Math.sqrt(2 * g * hDrop);
+  const vAp = delta * Math.sqrt(k / mA);
+  const vBp = (mB * vB - mA * vAp) / mB;
+  const e = (vAp - vBp) / vB;
+  const hr = vBp < 0 ? (vBp * vBp) / (2 * g) : 0;
+  return { vB, vAp, vBp, e: Math.max(0, e), hr };
+}
+
+function getParams() {
+  return {
+    mB: parseFloat(document.getElementById('sl-mB').value),
+    mA: parseFloat(document.getElementById('sl-mA').value),
+    hDrop: parseFloat(document.getElementById('sl-h').value) / 1000,
+    delta: parseFloat(document.getElementById('sl-d').value) / 1000,
+    k: parseFloat(document.getElementById('sl-k').value) * 1000
+  };
+}
+
+function updateResults() {
+  const p = getParams();
+  const r = compute(p.mB, p.mA, p.hDrop, p.delta, p.k);
+  document.getElementById('res-vB').textContent = r.vB.toFixed(3);
+  document.getElementById('res-vA').textContent = r.vAp.toFixed(3);
+  document.getElementById('res-hr').textContent = (r.hr * 1000).toFixed(1);
+  document.getElementById('res-e').textContent = r.e.toFixed(3);
+  updateSteps(p, r);
+  updateChart();
+}
+
+function updateSteps(p, r) {
+  const reboundsUp = r.vBp < 0;
+  const steps = [
+    { n: '1', t: `<strong>Hammer velocity before impact</strong> &nbsp; v_B = √(2g·h) = √(2 × 9.81 × ${p.hDrop.toFixed(3)}) = <strong>${r.vB.toFixed(3)} m/s ↓</strong>` },
+    { n: '2', t: `<strong>Anvil velocity after impact</strong> &nbsp; v'_A = δ√(k/m_A) = ${(p.delta*1000).toFixed(0)}mm × √(${(p.k/1000).toFixed(0)}k/${p.mA}) = <strong>${r.vAp.toFixed(3)} m/s ↓</strong>` },
+    { n: '3', t: `<strong>Hammer velocity after impact</strong> &nbsp; v'_B = (m_B·v_B − m_A·v'_A)/m_B = <strong>${r.vBp.toFixed(3)} m/s</strong> ${reboundsUp ? '(↑ rebounds)' : '(↓ follows anvil)'}` },
+    { n: '4', t: `<strong>Coefficient of restitution</strong> &nbsp; e = (v'_A − v'_B)/(v_B − 0) = <strong>${r.e.toFixed(3)}</strong>` },
+    { n: '5', t: reboundsUp ? `<strong>Rebound height</strong> &nbsp; h_r = v'_B² / (2g) = <strong>${(r.hr*1000).toFixed(1)} mm</strong>` : `<strong>Rebound height</strong> &nbsp; Hammer does not rebound (follows anvil)` }
+  ];
+  const el = document.getElementById('stepList');
+  el.innerHTML = steps.map(s => `<div class="step"><span class="step-num">${s.n}</span><span class="step-text">${s.t}</span></div>`).join('');
+}
+
+let paramChart = null;
+function updateChart() {
+  const p = getParams();
+  const hVals = [];
+  const hrVals = [];
+  for (let h = 50; h <= 2000; h += 50) {
+    const r = compute(p.mB, p.mA, h / 1000, p.delta, p.k);
+    hVals.push(h);
+    hrVals.push(parseFloat((r.hr * 1000).toFixed(1)));
+  }
+  if (paramChart) {
+    paramChart.data.labels = hVals;
+    paramChart.data.datasets[0].data = hrVals;
+    paramChart.update();
+  } else {
+    paramChart = new Chart(document.getElementById('paramChart'), {
+      type: 'line',
+      data: {
+        labels: hVals,
+        datasets: [{
+          label: 'Rebound height (mm)',
+          data: hrVals,
+          borderColor: '#378ADD',
+          backgroundColor: 'rgba(55,138,221,0.08)',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: 'Drop height (mm)', font: { size: 11 } }, ticks: { maxTicksLimit: 8, font: { size: 11 } } },
+          y: { title: { display: true, text: 'Rebound h (mm)', font: { size: 11 } }, ticks: { font: { size: 11 } }, min: 0 }
+        }
+      }
+    });
+  }
+}
+
+['sl-mB','sl-mA','sl-h','sl-d','sl-k'].forEach(id => {
+  const el = document.getElementById(id);
+  const lblMap = { 'sl-mB': 'lbl-mB', 'sl-mA': 'lbl-mA', 'sl-h': 'lbl-h', 'sl-d': 'lbl-d', 'sl-k': 'lbl-k' };
+  el.addEventListener('input', () => {
+    document.getElementById(lblMap[id]).textContent = el.value;
+    updateResults();
+  });
+});
+
+const canvas = document.getElementById('forge');
+const ctx = canvas.getContext('2d');
+let animState = 'idle';
+let animT = 0;
+let animRaf = null;
+
+function drawForge(hammY, anvilY, phase) {
+  const W = canvas.offsetWidth;
+  const H = canvas.offsetHeight;
+  canvas.width = W; canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const textColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';
+  const strokeColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+  const springColor = isDark ? '#4a7fa3' : '#378ADD';
+  const hammerCol = isDark ? '#8fa4c8' : '#185FA5';
+  const anvilCol = isDark ? '#c0b49a' : '#8a7960';
+
+  const cx = W / 2;
+  const groundY = H - 20;
+  const anvilH = 40;
+  const anvilW = 120;
+  const hammerW = 50;
+  const hammerH = 60;
+
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(40, groundY); ctx.lineTo(W - 40, groundY); ctx.stroke();
+
+  const springBase = groundY - 10;
+  const springTop = anvilY + anvilH;
+  const coils = 8;
+  ctx.strokeStyle = springColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const ampX = 16;
+  for (let i = 0; i <= coils * 4; i++) {
+    const t = i / (coils * 4);
+    const y = springBase - t * (springBase - springTop);
+    const x = cx + Math.sin(t * coils * Math.PI * 2) * ampX;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = anvilCol;
+  ctx.beginPath();
+  ctx.roundRect(cx - anvilW / 2, anvilY, anvilW, anvilH, 4);
+  ctx.fill();
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  ctx.fillStyle = hammerCol;
+  ctx.beginPath();
+  ctx.roundRect(cx - hammerW / 2, hammY, hammerW, hammerH, 4);
+  ctx.fill();
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  ctx.fillStyle = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.4)';
+  ctx.fillRect(cx - hammerW / 2 + 4, hammY + 6, 8, hammerH - 12);
+
+  ctx.fillStyle = textColor;
+  ctx.font = '11px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+  ctx.textAlign = 'right';
+  ctx.fillText('B (hammer)', cx - hammerW / 2 - 6, hammY + hammerH / 2 + 4);
+  ctx.fillText('A (anvil)', cx - anvilW / 2 - 6, anvilY + anvilH / 2 + 4);
+
+  if (phase === 'fall') {
+    ctx.strokeStyle = '#E24B4A';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(cx + hammerW/2 + 16, hammY + hammerH/2);
+    ctx.lineTo(cx + hammerW/2 + 16, anvilY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+const anvilRestY = 140;
+const hammerRestY = 30;
+const hammerImpactY = anvilRestY - 60;
+
+function animate() {
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  if (animState === 'fall') {
+    animT += 0.025;
+    const prog = Math.min(animT, 1);
+    const eased = prog < 1 ? 1 - Math.pow(1 - prog, 2) : 1;
+    const hammY = hammerRestY + eased * (hammerImpactY - hammerRestY);
+    drawForge(hammY, anvilRestY, 'fall');
+    if (prog >= 1) { animState = 'impact'; animT = 0; }
+    animRaf = requestAnimationFrame(animate);
+  } else if (animState === 'impact') {
+    animT += 0.04;
+    const prog = Math.min(animT, 1);
+    const p = getParams();
+    const r = compute(p.mB, p.mA, p.hDrop, p.delta, p.k);
+    const maxDefl = Math.min(p.delta * 800, 40);
+    const anvilOff = Math.sin(prog * Math.PI) * maxDefl;
+    const hammBounce = r.vBp < 0 ? Math.sin(prog * Math.PI) * -30 : 0;
+    drawForge(hammerImpactY + hammBounce, anvilRestY + anvilOff, 'impact');
+    if (prog >= 1) { animState = 'rebound'; animT = 0; }
+    animRaf = requestAnimationFrame(animate);
+  } else if (animState === 'rebound') {
+    animT += 0.02;
+    const prog = Math.min(animT, 1);
+    const p = getParams();
+    const r = compute(p.mB, p.mA, p.hDrop, p.delta, p.k);
+    const rebH = Math.min(r.hr * 5000, 80);
+    const hammY = r.vBp < 0 ? hammerImpactY - Math.sin(prog * Math.PI) * rebH : hammerImpactY;
+    drawForge(hammY, anvilRestY, 'idle');
+    if (prog >= 1) { animState = 'idle'; cancelAnimationFrame(animRaf); drawForge(hammerRestY, anvilRestY, 'idle'); return; }
+    animRaf = requestAnimationFrame(animate);
+  }
+}
+
+document.getElementById('btnDrop').addEventListener('click', () => {
+  cancelAnimationFrame(animRaf);
+  animState = 'fall'; animT = 0;
+  animate();
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  cancelAnimationFrame(animRaf);
+  animState = 'idle';
+  drawForge(hammerRestY, anvilRestY, 'idle');
+});
+
+window.addEventListener('resize', () => drawForge(hammerRestY, anvilRestY, 'idle'));
+drawForge(hammerRestY, anvilRestY, 'idle');
+updateResults();
+</script>
