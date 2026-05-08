@@ -213,7 +213,7 @@
 
 <header>
   <h1>Drop Forge Impact Simulator</h1>
-  <span>MECE 3336 &nbsp;·&nbsp; Dynamics &nbsp;·&nbsp; HW 6 - Problem (3/214)</span>
+  <span>MECE 3336 &nbsp;·&nbsp; Dynamics Project &nbsp;·&nbsp; HW 6 - Problem (3/214)</span>
 </header>
 
 <main>
@@ -462,22 +462,29 @@ document.getElementById('yAxis').addEventListener('change', updateChart);
 const forgeCanvas = document.getElementById('forge');
 const ctx = forgeCanvas.getContext('2d');
 let animState = 'idle', animT = 0, animRaf = null;
+let reboundHoldY = 0.06; // where hammer stops after rebound
 
 const ANVIL_REST_Y_FRAC = 0.52;
 const HAMMER_REST_Y_FRAC = 0.06;
 
-function drawForge(hammYfrac, anvilExtraFrac, phase) {
+// Speeds — smaller = slower
+const SPEED_FALL   = 0.010;  // hammer falling
+const SPEED_IMPACT = 0.016;  // compression + rebound
+const SPEED_RISE   = 0.010;  // hammer rising to rebound height
+
+function drawForge(hammYfrac, anvilExtraFrac, phase, reboundYfrac) {
   const W = forgeCanvas.offsetWidth || 600;
   const H = forgeCanvas.offsetHeight || 260;
   forgeCanvas.width = W; forgeCanvas.height = H;
   ctx.clearRect(0, 0, W, H);
 
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const textCol  = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)';
+  const textCol   = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)';
   const springCol = isDark ? '#5ba3e8' : '#185FA5';
   const hammerCol = isDark ? '#7090b8' : '#185FA5';
   const anvilCol  = isDark ? '#a09070' : '#8a7960';
   const groundCol = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const labelCol  = isDark ? '#5ba3e8' : '#185FA5';
 
   const cx = W / 2;
   const groundY = H - 18;
@@ -487,10 +494,11 @@ function drawForge(hammYfrac, anvilExtraFrac, phase) {
   const anvilY = ANVIL_REST_Y_FRAC * H + anvilExtraFrac * H;
   const hammY  = hammYfrac * H;
 
-  ctx.strokeStyle = groundCol;
-  ctx.lineWidth = 1;
+  // Ground line
+  ctx.strokeStyle = groundCol; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(30, groundY); ctx.lineTo(W-30, groundY); ctx.stroke();
 
+  // Spring
   const springBase = groundY - 8;
   const springTop  = anvilY + anvilH;
   const coils = 8;
@@ -504,25 +512,24 @@ function drawForge(hammYfrac, anvilExtraFrac, phase) {
   }
   ctx.stroke();
 
+  // Anvil
   ctx.fillStyle = anvilCol;
-  ctx.beginPath();
-  ctx.roundRect(cx - anvilW/2, anvilY, anvilW, anvilH, 4);
-  ctx.fill();
+  ctx.beginPath(); ctx.roundRect(cx - anvilW/2, anvilY, anvilW, anvilH, 4); ctx.fill();
 
+  // Hammer
   ctx.fillStyle = hammerCol;
-  ctx.beginPath();
-  ctx.roundRect(cx - hammerW/2, hammY, hammerW, hammerH, 4);
-  ctx.fill();
-
+  ctx.beginPath(); ctx.roundRect(cx - hammerW/2, hammY, hammerW, hammerH, 4); ctx.fill();
   ctx.fillStyle = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.35)';
   ctx.fillRect(cx - hammerW/2 + 5, hammY+8, 7, hammerH-16);
 
+  // Labels
   ctx.fillStyle = textCol;
   ctx.font = '11px Courier New, monospace';
   ctx.textAlign = 'right';
   ctx.fillText('B (hammer)', cx - hammerW/2 - 8, hammY + hammerH/2 + 4);
   ctx.fillText('A (anvil)',  cx - anvilW/2  - 8, anvilY + anvilH/2 + 4);
 
+  // Drop height arrow during fall
   if (phase === 'fall') {
     ctx.strokeStyle = '#E24B4A'; ctx.lineWidth = 1;
     ctx.setLineDash([3,3]);
@@ -530,56 +537,100 @@ function drawForge(hammYfrac, anvilExtraFrac, phase) {
     ctx.moveTo(cx + hammerW/2 + 14, hammY + hammerH);
     ctx.lineTo(cx + hammerW/2 + 14, anvilY);
     ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#E24B4A'; ctx.font = '10px Courier New, monospace';
-    ctx.textAlign = 'left';
+    ctx.fillStyle = '#E24B4A'; ctx.font = '10px Courier New, monospace'; ctx.textAlign = 'left';
     ctx.fillText('h = ' + document.getElementById('sl-h').value + ' mm', cx + hammerW/2 + 18, (hammY+anvilY)/2+4);
+  }
+
+  // Rebound height arrow + label when hammer is held at peak
+  if (phase === 'held' && reboundYfrac !== undefined) {
+    const anvilTopY      = ANVIL_REST_Y_FRAC * H;
+    const hammerBottomY  = reboundYfrac * H + hammerH;
+
+    // Dashed horizontal reference line at anvil top (the "0" level)
+    ctx.strokeStyle = '#2aaa6e'; ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(cx - anvilW/2 - 30, anvilTopY);
+    ctx.lineTo(cx + hammerW/2 + 50, anvilTopY);
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // Vertical arrow from anvil top (0) up to hammer bottom (h_r)
+    const arrowX = cx + hammerW/2 + 24;
+    ctx.strokeStyle = '#2aaa6e'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(arrowX, anvilTopY);
+    ctx.lineTo(arrowX, hammerBottomY);
+    ctx.stroke();
+
+    // Arrowheads pointing inward
+    ctx.fillStyle = '#2aaa6e';
+    ctx.beginPath(); ctx.moveTo(arrowX, anvilTopY); ctx.lineTo(arrowX-4, anvilTopY+8); ctx.lineTo(arrowX+4, anvilTopY+8); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(arrowX, hammerBottomY); ctx.lineTo(arrowX-4, hammerBottomY-8); ctx.lineTo(arrowX+4, hammerBottomY-8); ctx.closePath(); ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#2aaa6e';
+    ctx.font = 'bold 11px Courier New, monospace';
+    ctx.textAlign = 'left';
+    const hrMm = (+document.getElementById('res-hr').textContent).toFixed(1);
+    ctx.fillText('h_r = ' + hrMm + ' mm', arrowX + 6, (anvilTopY + hammerBottomY) / 2 + 4);
   }
 }
 
 function animate() {
+  const p = getParams();
+  const r = compute(p.mB, p.mA, p.hDrop, p.delta, p.k);
+  const impactFrac = ANVIL_REST_Y_FRAC - 56/260;
+
+  // Convert h_r (meters) to canvas fraction using the same scale as the drop:
+  // p.hDrop meters maps to (impactFrac - HAMMER_REST_Y_FRAC) canvas fraction
+  const pxPerMeter = (impactFrac - HAMMER_REST_Y_FRAC) / p.hDrop;
+  const rebFrac = r.vBp < 0 ? r.hr * pxPerMeter : 0;  // tiny for 14.5 mm rebound
+  reboundHoldY = impactFrac - rebFrac;
+
   if (animState === 'fall') {
-    animT += 0.022;
+    animT += SPEED_FALL;
     const prog = Math.min(animT, 1);
     const eased = 1 - Math.pow(1-prog, 2);
-    const hammYf = HAMMER_REST_Y_FRAC + eased*(ANVIL_REST_Y_FRAC - 56/260 - HAMMER_REST_Y_FRAC);
+    const hammYf = HAMMER_REST_Y_FRAC + eased*(impactFrac - HAMMER_REST_Y_FRAC);
     drawForge(hammYf, 0, 'fall');
     if (prog >= 1) { animState='impact'; animT=0; }
     animRaf = requestAnimationFrame(animate);
+
   } else if (animState === 'impact') {
-    animT += 0.035;
+    animT += SPEED_IMPACT;
     const prog = Math.min(animT, 1);
-    const p = getParams();
-    const r = compute(p.mB, p.mA, p.hDrop, p.delta, p.k);
     const maxDefl = Math.min(p.delta * 1200, 0.12);
-    const anvilOff = Math.sin(prog*Math.PI) * maxDefl;
-    const impactHammY = ANVIL_REST_Y_FRAC - 56/260;
-    const rebH = r.vBp < 0 ? Math.min(r.hr*800, 0.18) : 0;
-    const hammOff = Math.sin(prog*Math.PI) * -rebH;
-    drawForge(impactHammY + hammOff, anvilOff, 'impact');
-    if (prog >= 1) { animState='settle'; animT=0; }
+    // Anvil AND hammer move down together (stuck), then return together to impact point
+    const offset = Math.sin(prog*Math.PI) * maxDefl;
+    drawForge(impactFrac + offset, offset, 'impact');
+    if (prog >= 1) { animState='rise'; animT=0; }
     animRaf = requestAnimationFrame(animate);
-  } else if (animState === 'settle') {
-    animT += 0.03;
+
+  } else if (animState === 'rise') {
+    animT += SPEED_RISE;
     const prog = Math.min(animT, 1);
-    const impactHammY = ANVIL_REST_Y_FRAC - 56/260;
-    const endY = HAMMER_REST_Y_FRAC;
-    const p = getParams();
-    const r = compute(p.mB, p.mA, p.hDrop, p.delta, p.k);
-    const finalY = r.vBp < 0 ? endY : impactHammY;
-    const hammYf = impactHammY + (finalY - impactHammY) * prog;
-    drawForge(hammYf, 0, 'idle');
+    const eased = 1 - Math.pow(1-prog, 2);
+    // Hammer rises by h_r above impact point — correctly scaled
+    const hammYf = impactFrac - eased * rebFrac;
+    drawForge(hammYf, 0, 'rise');
     if (prog >= 1) {
-      drawForge(finalY, 0, 'idle');
-      animState = 'idle'; return;
+      animState = r.vBp < 0 ? 'held' : 'idle';
+      drawForge(reboundHoldY, 0, r.vBp < 0 ? 'held' : 'idle', reboundHoldY);
+      return;
     }
     animRaf = requestAnimationFrame(animate);
   }
+  // 'held' and 'idle' states do nothing — hammer stays frozen
 }
 
 document.getElementById('btnDrop').addEventListener('click', () => {
-  cancelAnimationFrame(animRaf);
-  animState='fall'; animT=0;
-  animate();
+  if (animState === 'held' || animState === 'idle') {
+    // Reset then play
+    cancelAnimationFrame(animRaf);
+    drawForge(HAMMER_REST_Y_FRAC, 0, 'idle');
+    animState='fall'; animT=0;
+    animate();
+  }
 });
 document.getElementById('btnReset').addEventListener('click', () => {
   cancelAnimationFrame(animRaf);
